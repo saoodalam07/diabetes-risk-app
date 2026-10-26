@@ -38,6 +38,43 @@ except Exception:
     API_URL = os.getenv("API_URL", API_URL)
 API_URL = API_URL.rstrip("/")
 
+
+# ── Free single-host deploy (e.g. Streamlit Community Cloud) ─────────────────
+# When the secret EMBED_API = true is set, the FastAPI app from main.py is
+# started in a background thread on 127.0.0.1:8000 inside the same container.
+# This page still talks to it over HTTP only. Locally (no secret) nothing
+# changes: you start uvicorn yourself, as the assignment asks.
+def _flag(name):
+    try:
+        v = st.secrets.get(name, os.getenv(name, ""))
+    except Exception:
+        v = os.getenv(name, "")
+    return str(v).strip().lower() in ("1", "true", "yes")
+
+
+@st.cache_resource(show_spinner="Starting the prediction API…")
+def _start_embedded_api():
+    import threading
+    import time
+    import uvicorn
+    from main import app as fastapi_app
+
+    server = uvicorn.Server(uvicorn.Config(
+        fastapi_app, host="127.0.0.1", port=8000, log_level="warning"))
+    threading.Thread(target=server.run, daemon=True).start()
+    for _ in range(50):  # wait up to ~10 s for startup
+        try:
+            if requests.get("http://127.0.0.1:8000/", timeout=1).ok:
+                break
+        except requests.exceptions.RequestException:
+            time.sleep(0.2)
+    return True
+
+
+if _flag("EMBED_API"):
+    API_URL = "http://127.0.0.1:8000"
+    _start_embedded_api()
+
 FEATURES = [
     "Pregnancies", "Glucose", "BloodPressure", "SkinThickness",
     "Insulin", "BMI", "DiabetesPedigreeFunction", "Age",
@@ -186,12 +223,12 @@ with st.sidebar:
 
     st.markdown("#### Quick-fill a patient")
     for name, vals in PRESETS.items():
-        st.button(name, on_click=load_patient, args=(vals,), use_container_width=True)
+        st.button(name, on_click=load_patient, args=(vals,), width="stretch")
     if df is not None:
         st.button("🎲 Random real patient from dataset", on_click=load_random_real,
-                  use_container_width=True, type="primary")
+                  width="stretch", type="primary")
     st.button("↺ Reset to defaults", on_click=load_patient, args=(DEFAULTS,),
-              use_container_width=True)
+              width="stretch")
 
     st.divider()
     st.markdown("#### About the model")
@@ -243,7 +280,7 @@ with st.container(border=True):
                         help="Higher = more diabetes in the family tree (typical 0.1–1.0)")
         st.slider("Age (years)", 18, 90, key="in_Age")
         st.write("")
-        predict_clicked = st.button("🔍 Predict", type="primary", use_container_width=True)
+        predict_clicked = st.button("🔍 Predict", type="primary", width="stretch")
 
 payload = {
     "Pregnancies": int(st.session_state["in_Pregnancies"]),
@@ -379,7 +416,7 @@ if last:
             st.caption(("✅ Matches" if ok else "❌ Differs from") +
                        " this patient's real recorded outcome.")
     with mid:
-        st.plotly_chart(gauge(prob), use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(gauge(prob), width="stretch", config={"displayModeBar": False})
     with right:
         st.markdown("#### Clinical context")
         st.markdown(clinical_flags(p), unsafe_allow_html=True)
@@ -429,7 +466,7 @@ if last:
                                   yaxis=dict(autorange="reversed"),
                                   paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
                 fig.add_vline(x=0, line_color=INK_SOFT, line_width=1)
-                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
                 best = min(rows, key=lambda r: r[3])
                 if best[3] < prob:
                     st.success(f"**Biggest lever:** bringing {LABELS[best[0]]} from "
@@ -471,7 +508,7 @@ if last:
                               xaxis_title=LABELS[fsel], yaxis_title="Estimated risk (%)",
                               yaxis_range=[-5, 105],
                               paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
             flips = [xs[i] for i in range(1, len(ys)) if (ys[i] >= 50) != (ys[i - 1] >= 50)]
             if flips:
                 st.caption(f"The prediction flips around **{LABELS[fsel]} ≈ "
@@ -491,7 +528,7 @@ if last:
                 f"KNN decides by looking at the most similar patients it has seen. "
                 f"Here are the **5 closest real patients** in the dataset — "
                 f"**{n_d} of 5** were diabetic.")
-            st.dataframe(sim, hide_index=True, use_container_width=True,
+            st.dataframe(sim, hide_index=True, width="stretch",
                          column_config={"Similarity": st.column_config.ProgressColumn(
                              "Similarity", min_value=0, max_value=1, format="%.2f")})
             st.caption("Searched across all 768 rows, so this can differ slightly from the "
@@ -528,15 +565,15 @@ if last:
                               yaxis=dict(autorange="reversed"),
                               legend=dict(orientation="h", y=-0.22),
                               paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
     # ── History ──────────────────────────────────────────────────────────────
     with tab4:
         hist = pd.DataFrame(st.session_state["history"])
-        st.dataframe(hist, hide_index=True, use_container_width=True)
+        st.dataframe(hist, hide_index=True, width="stretch")
         c_a, c_b = st.columns([1, 4])
         c_a.download_button("⬇️ Download CSV", hist.to_csv(index=False),
-                            "predictions.csv", "text/csv", use_container_width=True)
+                            "predictions.csv", "text/csv", width="stretch")
         if c_b.button("Clear history"):
             st.session_state["history"] = []
             st.rerun()

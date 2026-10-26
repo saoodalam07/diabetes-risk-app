@@ -23,7 +23,15 @@ streamlit run streamlit_app.py   # terminal 2 → http://localhost:8501
 | History | Every prediction this session, downloadable as CSV |
 | Graceful failure | Friendly "start FastAPI first" message, live API status in the sidebar |
 
-## Deploy (free)
+## Deploy — easiest (free, one app, no card)
+Streamlit Community Cloud → New app → `streamlit_app.py` → Advanced settings → Secrets:
+```toml
+EMBED_API = true
+```
+FastAPI (`main.py`) then starts inside the same container on `127.0.0.1:8000`,
+and the UI still calls `/predict` over HTTP.
+
+## Deploy — separate API host (alternative)
 1. **API → Render** (New → Web Service, connect the repo)
    - Build: `pip install -r requirements.txt`
    - Start: `uvicorn main:app --host 0.0.0.0 --port $PORT`
